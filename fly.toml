@@ -1,0 +1,24 @@
+# fly.toml app configuration file generated for ai-cv-builder-be on 2025-06-07T02:28:42+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ai-cv-builder-be'
+primary_region = 'sin'
+
+[build]
+  dockerfile = './Dockerfile'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
