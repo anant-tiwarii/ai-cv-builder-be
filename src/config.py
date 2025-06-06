@@ -10,8 +10,11 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_algorithm: str
     jwt_expire_minutes: int
+    deepseek_endpoint: str
+    gemini_apikey: str # Default Llama endpoint
 
     class Config:
         env_file = ".env"
+        extra = "allow"
 
 settings = Settings()
