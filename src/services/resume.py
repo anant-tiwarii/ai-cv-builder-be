@@ -10,12 +10,16 @@ from utils.security import decode_jwt_token
 from services.database import get_db
 from datetime import datetime
 from google import genai
+from pymongo.errors import DuplicateKeyError
 
 class ResumeService:
     def __init__(self):
         self.gemini_apikey = settings.gemini_apikey
         self.db = get_db()
         self.results = self.db["results"]
+        self.rate_limits = self.db["rate_limits"]
+        self.rate_limits.create_index("custHash", unique=True)
+        self.rate_limits.create_index("createdAt", expireAfterSeconds=86400)
 
     async def get_results(self, custHash: str) -> dict:
         try:
@@ -82,6 +86,17 @@ class ResumeService:
         return text.strip()
 
     async def process_resume(self, file: UploadFile, token: str) -> ATSResponse:
+        custHash = decode_jwt_token(token)["custHash"]
+        rate_limit_inserted = False
+        try:
+            self.rate_limits.insert_one({"custHash": custHash, "createdAt": datetime.utcnow()})
+            rate_limit_inserted = True
+        except DuplicateKeyError:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded. You can only check 1 resume per day."
+            )
+
         try:
             # Read PDF content
             text = self.extract_text_from_file(file)
@@ -163,8 +178,6 @@ class ResumeService:
                             detail=f"Invalid response from Llama model: missing {field}"
                         )
                     
-                custHash = decode_jwt_token(token)["custHash"]
-
                 #store the result in a database collection with the custHash as the primary key 
                 #and a result field which will be a map of map with file name as key a
                 #and current timestamp as second key and the score as value 
@@ -198,8 +211,12 @@ class ResumeService:
                 )
 
         except HTTPException:
+            if rate_limit_inserted:
+                self.rate_limits.delete_one({"custHash": custHash})
             raise
         except Exception as e:
+            if rate_limit_inserted:
+                self.rate_limits.delete_one({"custHash": custHash})
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An unexpected error occurred: {str(e)}"
