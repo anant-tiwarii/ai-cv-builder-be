@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import PyPDF2
 from docx import Document
+from docx.oxml.ns import qn
 from fastapi import UploadFile, HTTPException, status
 from google import genai
 from google.genai import errors, types
@@ -122,6 +123,51 @@ Document content:
 {{text}}
 """
 
+def _block_lines(element):
+    """Yield text lines from a docx block container, in document order.
+
+    Walks w:p and w:tbl children and recurses into table cells. Collecting every
+    w:t descendant of a paragraph (rather than reading Paragraph.text) also picks
+    up content that python-docx skips, notably text boxes.
+    """
+    for child in element.iterchildren():
+        if child.tag == qn("w:p"):
+            line = "".join(node.text or "" for node in child.iter(qn("w:t"))).strip()
+            if line:
+                yield line
+        elif child.tag == qn("w:tbl"):
+            for row in child.iterchildren(qn("w:tr")):
+                cells = [
+                    " ".join(_block_lines(cell))
+                    for cell in row.iterchildren(qn("w:tc"))
+                ]
+                line = " | ".join(cell for cell in cells if cell)
+                if line:
+                    yield line
+
+
+def extract_docx_text(doc) -> str:
+    """Full visible text of a .docx, including tables, text boxes and headers.
+
+    python-docx's doc.paragraphs covers only body-level paragraphs, so a resume
+    laid out in a table extracts as little more than the candidate's name.
+    """
+    body = list(_block_lines(doc.element.body))
+
+    # Contact details are often parked in the header, which is a separate part.
+    # Headers repeat per section, so keep only the first occurrence of each line.
+    header, footer = [], []
+    seen = set()
+    for section in doc.sections:
+        for part, bucket in ((section.header, header), (section.footer, footer)):
+            for line in _block_lines(part._element):
+                if line not in seen:
+                    seen.add(line)
+                    bucket.append(line)
+
+    return "\n".join(header + body + footer)
+
+
 _indexes_ready = False
 
 
@@ -174,8 +220,7 @@ class ResumeService:
 
         elif filename.endswith((".doc", ".docx")):
             try:
-                doc = Document(io.BytesIO(contents))
-                text = "\n".join(paragraph.text for paragraph in doc.paragraphs)
+                text = extract_docx_text(Document(io.BytesIO(contents)))
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
