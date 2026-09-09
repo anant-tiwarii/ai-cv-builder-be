@@ -1,5 +1,6 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+
 
 class VerifyEmailRequest(BaseModel):
     email: EmailStr
@@ -9,16 +10,22 @@ class VerifyEmailRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
 
 class ATSResponse(BaseModel):
     is_resume: bool
-    score: float | None= None
-    feedback: str | None= None
-    strengths: list[str] | None= None
-    weaknesses: list[str] | None= None
-    suggestions: list[str] | None= None
+    score: float | None = None
+    feedback: str | None = None
+    strengths: list[str] | None = None
+    weaknesses: list[str] | None = None
+    suggestions: list[str] | None = None
+
+class ResumeScore(BaseModel):
+    filename: str | None = None
+    timestamp: datetime | None = None
+    score: float
 
 class Result(BaseModel):
     custHash: str
-    result: dict[str, dict[str, float]]
+    results: list[ResumeScore] = []

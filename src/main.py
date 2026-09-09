@@ -1,28 +1,31 @@
-from fastapi import FastAPI
-from routes import health, auth, resume
+import logging
+
 import uvicorn
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from middleware.auth import verify_token_middleware
+from routes import health, auth, resume
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO)
 
-# Extremely permissive CORS setup for debugging
+app = FastAPI(title="AI CV Builder API")
+
+# Registered first so CORSMiddleware ends up outermost and 401s still carry CORS headers.
+app.middleware("http")(verify_token_middleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins temporarily
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # cannot be True alongside a wildcard origin
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["New-Access-Token"],
 )
 
-# Include your routers
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(resume.router, prefix="/resume", tags=["resume"])
-app.middleware("http")(verify_token_middleware)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-async def handler(request):
-    return await app(request)

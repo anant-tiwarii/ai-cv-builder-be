@@ -1,37 +1,45 @@
-from fastapi import Request, HTTPException
+import logging
+
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from services.auth import get_auth_service
 
+PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/auth/verify-email",
+    "/auth/refresh",
+}
+
+
 async def verify_token_middleware(request: Request, call_next):
-    # Skip verification for non-protected routes
-    if request.method == "OPTIONS" or request.url.path in ['/auth/verify-email', '/health']:
+    if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
         return await call_next(request)
 
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Missing or invalid token"})
+
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return JSONResponse(status_code=401, content={"detail": "Missing or invalid token"})
+
     try:
-        # Extract token from Authorization header
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            raise HTTPException(status_code=401, detail="Missing or invalid token")
-        
-        token = auth_header.split(' ')[1]
-        
-        # Validate token
-        auth_service = get_auth_service()
-        validation_result = auth_service.validate_token(token)
+        validation_result = get_auth_service().validate_token(token)
+    except Exception:
+        logging.exception("Token validation failed")
+        return JSONResponse(status_code=503, content={"detail": "Auth backend unavailable"})
 
-        if not validation_result["valid"]:
-            raise HTTPException(status_code=401, detail="Invalid or expired session")
+    if not validation_result["valid"]:
+        return JSONResponse(status_code=401, content={"detail": "Invalid or expired session"})
 
-        response = await call_next(request)
+    response = await call_next(request)
 
-        # If token was refreshed, add new tokens to response
-        if validation_result["refreshed"]:
-            response.headers["New-Access-Token"] = validation_result["access_token"]
+    if validation_result.get("refreshed"):
+        response.headers["New-Access-Token"] = validation_result["access_token"]
+        response.headers["Access-Control-Expose-Headers"] = "New-Access-Token"
 
-        return response
-        
-    except HTTPException as e:
-        return JSONResponse(
-            status_code=e.status_code,
-            content={"detail": str(e.detail)}
-        )
+    return response
