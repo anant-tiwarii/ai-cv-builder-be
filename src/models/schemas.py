@@ -1,4 +1,3 @@
-from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -21,13 +20,3 @@ class ATSResponse(BaseModel):
     strengths: list[str] | None = None
     weaknesses: list[str] | None = None
     suggestions: list[str] | None = None
-
-class ResumeScore(BaseModel):
-    filename: str | None = None
-    timestamp: datetime | None = None
-    score: float
-    breakdown: dict[str, float] | None = None
-
-class Result(BaseModel):
-    custHash: str
-    results: list[ResumeScore] = []

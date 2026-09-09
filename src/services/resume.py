@@ -200,7 +200,15 @@ class ResumeService:
         if result is None:
             return {"custHash": custHash, "results": []}
 
-        return {"custHash": custHash, "results": result.get("results", [])}
+        # Shape kept as the frontend already integrates it: stringified _id and
+        # timestamps wrapped as Mongo extended JSON.
+        result_dict = dict(result)
+        result_dict["_id"] = str(result_dict["_id"])
+        for item in result_dict.get("results", []):
+            timestamp = item.get("timestamp")
+            if isinstance(timestamp, datetime):
+                item["timestamp"] = {"$date": timestamp.isoformat()}
+        return result_dict
 
     def extract_text_from_file(self, file: UploadFile) -> str:
         contents = file.file.read()
