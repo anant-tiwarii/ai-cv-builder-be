@@ -16,6 +16,7 @@ class TokenResponse(BaseModel):
 class ATSResponse(BaseModel):
     is_resume: bool
     score: float | None = None
+    breakdown: dict[str, float] | None = None
     feedback: str | None = None
     strengths: list[str] | None = None
     weaknesses: list[str] | None = None
@@ -25,6 +26,7 @@ class ResumeScore(BaseModel):
     filename: str | None = None
     timestamp: datetime | None = None
     score: float
+    breakdown: dict[str, float] | None = None
 
 class Result(BaseModel):
     custHash: str
